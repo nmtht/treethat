@@ -4,9 +4,6 @@ using Rhino.Geometry;
 
 namespace TreeThat.Generation
 {
-    /// <summary>
-    /// One segment of the plant skeleton (trunk or branch).
-    /// </summary>
     public class BranchSegment
     {
         public Point3d Start { get; set; }
@@ -19,9 +16,6 @@ namespace TreeThat.Generation
         public double Length => Start.DistanceTo(End);
     }
 
-    /// <summary>
-    /// Procedural skeleton: trunk + recursive branches.
-    /// </summary>
     public class PlantSkeleton
     {
         public List<BranchSegment> Segments { get; } = new List<BranchSegment>();
@@ -33,25 +27,105 @@ namespace TreeThat.Generation
             var skeleton = new PlantSkeleton();
             var rng = new Random(p.Seed);
 
-            var trunkStart = Point3d.Origin;
-            var trunkEnd = new Point3d(0, 0, p.Height);
             var trunk = new BranchSegment
             {
-                Start = trunkStart,
-                End = trunkEnd,
+                Start = Point3d.Origin,
+                End = new Point3d(0, 0, p.Height),
                 StartRadius = p.BaseRadius,
-                EndRadius = p.BaseRadius * p.RadiusRatio,
+                EndRadius = Math.Max(p.BaseRadius * p.RadiusRatio * 0.5, 0.02),
                 Level = 0
             };
             skeleton.Segments.Add(trunk);
 
-            Grow(skeleton, trunk, p, rng, 1);
-            PlaceLeaves(skeleton, p, rng);
+            if (p.ConiferStyle)
+                GrowConifer(skeleton, trunk, p, rng);
+            else
+                GrowDeciduous(skeleton, trunk, p, rng, 1);
 
+            PlaceLeaves(skeleton, p, rng);
             return skeleton;
         }
 
-        static void Grow(PlantSkeleton skeleton, BranchSegment parent, PlantParams p, Random rng, int level)
+        /// <summary>
+        /// Fir/spruce/pine: whorls of near-horizontal branches along the trunk,
+        /// length shrinks toward the tip → cone.
+        /// </summary>
+        static void GrowConifer(PlantSkeleton skeleton, BranchSegment trunk, PlantParams p, Random rng)
+        {
+            int tiers = Math.Max(3, p.BranchLevels + 2);
+            int perWhorl = Math.Max(4, p.BranchesPerNode);
+
+            // Clear trunk bottom ~12%, tip ~5%
+            for (int tier = 0; tier < tiers; tier++)
+            {
+                double t = 0.12 + (0.83 * tier / Math.Max(1, tiers - 1));
+                // Wider at bottom, pointy top
+                double cone = 1.0 - t;
+                cone = Math.Pow(Math.Max(cone, 0.05), 0.85);
+
+                double baseLen = p.Height * 0.42 * cone * (0.9 + rng.NextDouble() * 0.2);
+                var attach = trunk.Start + trunk.Direction * t;
+                double radiusAt = trunk.StartRadius * (1.0 - t * 0.7);
+
+                // Slight droop: below horizontal
+                double elev = (-8.0 + rng.NextDouble() * 12.0) * Math.PI / 180.0;
+
+                for (int i = 0; i < perWhorl; i++)
+                {
+                    double azimuth = 2.0 * Math.PI * i / perWhorl
+                                   + (rng.NextDouble() - 0.5) * 0.25
+                                   + tier * 0.35;
+
+                    var dir = new Vector3d(
+                        Math.Cos(azimuth) * Math.Cos(elev),
+                        Math.Sin(azimuth) * Math.Cos(elev),
+                        Math.Sin(elev));
+                    dir.Unitize();
+
+                    double len = baseLen * (0.85 + rng.NextDouble() * 0.3);
+                    var end = attach + dir * len;
+
+                    var primary = new BranchSegment
+                    {
+                        Start = attach,
+                        End = end,
+                        StartRadius = Math.Max(radiusAt * 0.35, 0.015),
+                        EndRadius = Math.Max(radiusAt * 0.12, 0.008),
+                        Level = 1
+                    };
+                    skeleton.Segments.Add(primary);
+
+                    // Short secondary needles/branchlets along primary
+                    int secondaries = 2 + (int)(p.FoliageDensity * 3);
+                    for (int s = 0; s < secondaries; s++)
+                    {
+                        double st = 0.25 + 0.7 * s / Math.Max(1, secondaries - 1);
+                        var sAttach = primary.Start + primary.Direction * st;
+                        double sLen = len * 0.22 * (0.7 + rng.NextDouble() * 0.5);
+
+                        // Sideways from primary, slight down
+                        var side = Vector3d.CrossProduct(dir, Vector3d.ZAxis);
+                        if (side.IsTiny())
+                            side = Vector3d.CrossProduct(dir, Vector3d.XAxis);
+                        side.Unitize();
+                        double flip = (s % 2 == 0) ? 1.0 : -1.0;
+                        var sDir = side * flip + dir * 0.3 - Vector3d.ZAxis * 0.15;
+                        sDir.Unitize();
+
+                        skeleton.Segments.Add(new BranchSegment
+                        {
+                            Start = sAttach,
+                            End = sAttach + sDir * sLen,
+                            StartRadius = primary.EndRadius * 0.8,
+                            EndRadius = primary.EndRadius * 0.4,
+                            Level = 2
+                        });
+                    }
+                }
+            }
+        }
+
+        static void GrowDeciduous(PlantSkeleton skeleton, BranchSegment parent, PlantParams p, Random rng, int level)
         {
             if (level > p.BranchLevels)
                 return;
@@ -99,29 +173,31 @@ namespace TreeThat.Generation
                     Level = level
                 };
                 skeleton.Segments.Add(seg);
-
-                Grow(skeleton, seg, p, rng, level + 1);
+                GrowDeciduous(skeleton, seg, p, rng, level + 1);
             }
         }
 
         static void PlaceLeaves(PlantSkeleton skeleton, PlantParams p, Random rng)
         {
-            // Leaves on all levels above trunk; denser on higher levels
             foreach (var seg in skeleton.Segments)
             {
-                if (seg.Level < 1 && p.BranchLevels > 0)
-                    continue; // skip pure trunk unless no branches
+                if (seg.Level < 1 && p.BranchLevels > 0 && !p.ConiferStyle)
+                    continue;
 
-                // Level weight: higher branches get more leaves
-                double levelWeight = 0.4 + seg.Level * 0.45;
-                if (seg.Level >= p.BranchLevels)
+                if (p.ConiferStyle && seg.Level < 1)
+                    continue;
+
+                double levelWeight = p.ConiferStyle
+                    ? (seg.Level == 1 ? 1.0 : 1.3)
+                    : (0.4 + seg.Level * 0.45);
+
+                if (!p.ConiferStyle && seg.Level >= p.BranchLevels)
                     levelWeight *= 1.4;
 
-                // Base count bumped (~2x previous)
                 int leavesOnSeg = (int)Math.Round(
-                    (6 + p.FoliageDensity * 14) * levelWeight);
+                    (p.ConiferStyle ? 4 : 6 + p.FoliageDensity * 14) * levelWeight * (0.5 + p.FoliageDensity));
 
-                leavesOnSeg = Math.Max(2, leavesOnSeg);
+                leavesOnSeg = Math.Max(p.ConiferStyle ? 1 : 2, leavesOnSeg);
 
                 for (int i = 0; i < leavesOnSeg; i++)
                 {
@@ -129,8 +205,7 @@ namespace TreeThat.Generation
                     var pt = seg.Start + seg.Direction * t;
 
                     var dir = seg.Direction;
-                    if (dir.IsTiny())
-                        continue;
+                    if (dir.IsTiny()) continue;
                     dir.Unitize();
 
                     Vector3d side;
@@ -145,11 +220,13 @@ namespace TreeThat.Generation
                                 + Vector3d.CrossProduct(dir, side) * Math.Sin(spin);
                     outward.Unitize();
 
-                    // Slight upward bias for fuller crown
-                    outward = outward + Vector3d.ZAxis * 0.25;
-                    outward.Unitize();
+                    if (!p.ConiferStyle)
+                    {
+                        outward = outward + Vector3d.ZAxis * 0.25;
+                        outward.Unitize();
+                    }
 
-                    pt += outward * (seg.EndRadius + p.LeafSize * (0.25 + rng.NextDouble() * 0.35));
+                    pt += outward * (seg.EndRadius + p.LeafSize * (0.2 + rng.NextDouble() * 0.35));
 
                     skeleton.LeafPoints.Add(pt);
                     skeleton.LeafNormals.Add(outward);
