@@ -1,6 +1,8 @@
 using System;
 using Rhino;
 using Rhino.PlugIns;
+using Rhino.UI;
+using TreeThat.UI;
 
 namespace TreeThat
 {
@@ -24,7 +26,9 @@ namespace TreeThat
 
         protected override LoadReturnCode OnLoad(ref string errorMessage)
         {
-            // Register panel here in later stages if needed
+            // Register the dockable panel
+            Panels.RegisterPanel(this, typeof(MainPanel), "TreeThat", null);
+
             return LoadReturnCode.Success;
         }
     }
