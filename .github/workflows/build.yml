@@ -1,0 +1,32 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest   # RhinoCommon NuGet works best on Windows for now
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          10.0.x
+
+    - name: Restore
+      run: dotnet restore src/TreeThat/TreeThat.csproj
+
+    - name: Build (net8.0)
+      run: dotnet build src/TreeThat/TreeThat.csproj -c Release -f net8.0 --no-restore
+
+    - name: Build (net10.0)
+      run: dotnet build src/TreeThat/TreeThat.csproj -c Release -f net10.0 --no-restore
+      continue-on-error: true   # net10.0 may not be fully available on all runners yet
