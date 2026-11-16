@@ -11,12 +11,9 @@ namespace TreeThat
     /// TreeThat — Low-poly plant block generator for Rhino.
     /// Stage 0 scaffold.
     /// </summary>
-    [Guid(TreeThatPlugin.PluginId)]
+    [Guid("8F3A2B1C-4D5E-6F7A-8B9C-0D1E2F3A4B5C")]
     public class TreeThatPlugin : PlugIn
     {
-        // Keep this GUID stable forever
-        public const string PluginId = "c3d4e5f6-a7b8-9012-cdef-123456789012";
-
         public TreeThatPlugin()
         {
             Instance = this;
@@ -27,15 +24,24 @@ namespace TreeThat
         /// </summary>
         public static TreeThatPlugin Instance { get; private set; } = null!;
 
-        // Explicitly provide the Id so Rhino never sees Guid.Empty
-        public override Guid Id => new Guid(PluginId);
-
         public override PlugInLoadTime LoadTime => PlugInLoadTime.AtStartup;
 
         protected override LoadReturnCode OnLoad(ref string errorMessage)
         {
-            // Register the dockable panel
-            Panels.RegisterPanel(this, typeof(MainPanel), "TreeThat", null);
+            try
+            {
+                // Register the dockable panel
+                Panels.RegisterPanel(
+                    this,
+                    typeof(MainPanel),
+                    "TreeThat",
+                    null);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = "Failed to register TreeThat panel: " + ex.Message;
+                return LoadReturnCode.ErrorShowDialog;
+            }
 
             return LoadReturnCode.Success;
         }
