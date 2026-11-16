@@ -236,7 +236,6 @@ namespace TreeThat.UI
             _params.LeafSize = _leafSize.Value;
             _params.PolyBudget = (int)_polyBudget.Value;
             _params.Seed = (int)_seed.Value;
-            // ConiferStyle kept from last Apply Preset (not on UI yet)
         }
 
         void OnSavePreset(object? sender, EventArgs e)
@@ -336,10 +335,20 @@ namespace TreeThat.UI
             {
                 ReadParams();
                 DeletePrevious(doc);
-                var mesh = PlantGenerator.Generate(_params);
-                var id = BlockFactory.CreateBlock(doc, mesh, $"TT_Plant_{_params.Seed}", Point3d.Origin);
+
+                // Full bake: 3D on layers + 2D entourage (lines + hatch)
+                var geom = PlantGenerator.GenerateDetailed(_params);
+                var id = BlockFactory.CreateBlock(
+                    doc,
+                    geom,
+                    $"TT_Plant_{_params.Seed}",
+                    Point3d.Origin);
                 _lastObjectId = id;
-                _status.Text = id != Guid.Empty ? $"Block · {mesh.Faces.Count} faces" : "Failed to create block";
+
+                int faces = (geom.Branches?.Faces.Count ?? 0) + (geom.Leaves?.Faces.Count ?? 0);
+                _status.Text = id != Guid.Empty
+                    ? $"Block · {faces} faces · 2D entourage"
+                    : "Failed to create block";
             }
             catch (Exception ex)
             {
