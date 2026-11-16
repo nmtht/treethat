@@ -25,6 +25,7 @@ namespace TreeThat.Generation
         public int PolyBudget { get; set; } = 1200;
         public int Seed { get; set; } = 42;
         public int TubeSegments { get; set; } = 4;
+        public bool ConiferStyle { get; set; } = false;
 
         public PlantParams ToParams()
         {
@@ -41,7 +42,8 @@ namespace TreeThat.Generation
                 LeafSize = LeafSize,
                 PolyBudget = PolyBudget,
                 Seed = Seed,
-                TubeSegments = TubeSegments
+                TubeSegments = TubeSegments,
+                ConiferStyle = ConiferStyle
             };
         }
 
@@ -63,7 +65,8 @@ namespace TreeThat.Generation
                 LeafSize = p.LeafSize,
                 PolyBudget = p.PolyBudget,
                 Seed = p.Seed,
-                TubeSegments = p.TubeSegments
+                TubeSegments = p.TubeSegments,
+                ConiferStyle = p.ConiferStyle
             };
         }
     }
@@ -157,7 +160,8 @@ namespace TreeThat.Generation
                     LeafSize = 0.48,
                     PolyBudget = 2200,
                     Seed = 101,
-                    TubeSegments = 5
+                    TubeSegments = 5,
+                    ConiferStyle = false
                 },
                 new PlantPreset
                 {
@@ -165,36 +169,37 @@ namespace TreeThat.Generation
                     Category = "Conifer",
                     Description = "Narrow conical silhouette, dense small needles",
                     Height = 10.0,
-                    BranchLevels = 4,
+                    BranchLevels = 5,
                     LengthRatio = 0.55,
                     RadiusRatio = 0.72,
-                    BaseRadius = 0.18,
-                    BranchesPerNode = 4,
-                    BranchAngle = 22,
+                    BaseRadius = 0.16,
+                    BranchesPerNode = 5,
+                    BranchAngle = 80,
                     FoliageDensity = 1.0,
-                    LeafSize = 0.2,
-                    PolyBudget = 2400,
+                    LeafSize = 0.14,
+                    PolyBudget = 2600,
                     Seed = 202,
-                    TubeSegments = 4
+                    TubeSegments = 4,
+                    ConiferStyle = true
                 },
-                // Ель / пихта — denser horizontal tiers than Pine
                 new PlantPreset
                 {
                     Name = "Fir",
                     Category = "Conifer",
-                    Description = "Spruce/fir — layered horizontal branches, dense crown",
+                    Description = "Spruce/fir — layered horizontal branches, dense cone",
                     Height = 9.0,
-                    BranchLevels = 5,
+                    BranchLevels = 6,
                     LengthRatio = 0.58,
                     RadiusRatio = 0.75,
                     BaseRadius = 0.2,
-                    BranchesPerNode = 5,
-                    BranchAngle = 28,
+                    BranchesPerNode = 6,
+                    BranchAngle = 85,
                     FoliageDensity = 1.0,
-                    LeafSize = 0.16,
-                    PolyBudget = 2800,
+                    LeafSize = 0.15,
+                    PolyBudget = 3000,
                     Seed = 212,
-                    TubeSegments = 4
+                    TubeSegments = 4,
+                    ConiferStyle = true
                 },
                 new PlantPreset
                 {
@@ -214,7 +219,6 @@ namespace TreeThat.Generation
                     Seed = 303,
                     TubeSegments = 3
                 },
-                // Plant shape for hedges along a curve
                 new PlantPreset
                 {
                     Name = "Hedge Unit",
