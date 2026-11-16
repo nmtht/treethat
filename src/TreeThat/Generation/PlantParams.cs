@@ -1,5 +1,3 @@
-using System;
-
 namespace TreeThat.Generation
 {
     /// <summary>
@@ -22,20 +20,20 @@ namespace TreeThat.Generation
         /// <summary>Base trunk radius at the ground.</summary>
         public double BaseRadius { get; set; } = 0.15;
 
-        /// <summary>Number of child branches per parent (2 – 4).</summary>
+        /// <summary>Number of child branches per parent (2 – 6).</summary>
         public int BranchesPerNode { get; set; } = 3;
 
         /// <summary>Spread angle of branches in degrees.</summary>
         public double BranchAngle { get; set; } = 35.0;
 
         /// <summary>Foliage density 0–1 (affects leaf count).</summary>
-        public double FoliageDensity { get; set; } = 0.7;
+        public double FoliageDensity { get; set; } = 0.9;
 
         /// <summary>Size of a single leaf card.</summary>
         public double LeafSize { get; set; } = 0.35;
 
         /// <summary>Target maximum polygon count (soft budget).</summary>
-        public int PolyBudget { get; set; } = 800;
+        public int PolyBudget { get; set; } = 1500;
 
         /// <summary>Random seed for reproducible generation.</summary>
         public int Seed { get; set; } = 42;
