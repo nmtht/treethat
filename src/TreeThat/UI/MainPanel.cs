@@ -11,6 +11,7 @@ namespace TreeThat.UI
     /// <summary>
     /// Main dockable panel for TreeThat.
     /// Stage 1: parameters + generate + create block.
+    /// Previous generated mesh/instance is removed on each new generation.
     /// </summary>
     [System.Runtime.InteropServices.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")]
     public class MainPanel : Panel, IPanel
@@ -19,7 +20,9 @@ namespace TreeThat.UI
 
         readonly PlantParams _params = new PlantParams();
 
-        // Controls
+        // Last generated object in the active document (mesh or instance)
+        Guid _lastObjectId = Guid.Empty;
+
         NumericStepper _height = null!;
         NumericStepper _levels = null!;
         NumericStepper _branches = null!;
@@ -58,7 +61,6 @@ namespace TreeThat.UI
 
             layout.AddRow(null);
 
-            // --- Parameters ---
             layout.AddRow(SectionLabel("Trunk"));
             _height = AddStepper(layout, "Height", _params.Height, 0.5, 50, 0.5);
             _baseRadius = AddStepper(layout, "Base radius", _params.BaseRadius, 0.02, 2, 0.02);
@@ -78,7 +80,6 @@ namespace TreeThat.UI
 
             layout.AddRow(null);
 
-            // --- Buttons ---
             var btnGenerate = new Button { Text = "Generate Mesh" };
             btnGenerate.Click += OnGenerateMesh;
 
@@ -146,6 +147,21 @@ namespace TreeThat.UI
             _params.Seed = (int)_seed.Value;
         }
 
+        /// <summary>
+        /// Deletes the previously generated object (mesh or block instance) if it still exists.
+        /// </summary>
+        void DeletePrevious(RhinoDoc doc)
+        {
+            if (_lastObjectId == Guid.Empty)
+                return;
+
+            var obj = doc.Objects.FindId(_lastObjectId);
+            if (obj != null)
+                doc.Objects.Delete(obj, true);
+
+            _lastObjectId = Guid.Empty;
+        }
+
         void OnGenerateMesh(object? sender, EventArgs e)
         {
             var doc = RhinoDoc.ActiveDoc;
@@ -158,8 +174,11 @@ namespace TreeThat.UI
             try
             {
                 ReadParams();
+                DeletePrevious(doc);
+
                 var mesh = PlantGenerator.Generate(_params);
                 var id = BlockFactory.AddMesh(doc, mesh, $"TreeThat_{_params.Seed}");
+                _lastObjectId = id;
 
                 _status.Text = id != Guid.Empty
                     ? $"Mesh added · {mesh.Faces.Count} faces"
@@ -184,12 +203,15 @@ namespace TreeThat.UI
             try
             {
                 ReadParams();
+                DeletePrevious(doc);
+
                 var mesh = PlantGenerator.Generate(_params);
                 var id = BlockFactory.CreateBlock(
                     doc,
                     mesh,
                     $"TT_Plant_{_params.Seed}",
                     Point3d.Origin);
+                _lastObjectId = id;
 
                 _status.Text = id != Guid.Empty
                     ? $"Block created · {mesh.Faces.Count} faces"
