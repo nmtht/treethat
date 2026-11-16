@@ -20,10 +20,10 @@ namespace TreeThat.Generation
         /// <summary>Base trunk radius at the ground.</summary>
         public double BaseRadius { get; set; } = 0.15;
 
-        /// <summary>Number of child branches per parent (2 – 6).</summary>
+        /// <summary>Number of child branches per parent / per whorl.</summary>
         public int BranchesPerNode { get; set; } = 3;
 
-        /// <summary>Spread angle of branches in degrees.</summary>
+        /// <summary>Spread angle of branches in degrees from parent axis.</summary>
         public double BranchAngle { get; set; } = 35.0;
 
         /// <summary>Foliage density 0–1 (affects leaf count).</summary>
@@ -40,6 +40,11 @@ namespace TreeThat.Generation
 
         /// <summary>Radial segments for trunk/branch tubes (3–6 for low-poly).</summary>
         public int TubeSegments { get; set; } = 4;
+
+        /// <summary>
+        /// Conifer mode: horizontal whorls along trunk, conical silhouette (fir/spruce/pine).
+        /// </summary>
+        public bool ConiferStyle { get; set; } = false;
 
         public PlantParams Clone()
         {
