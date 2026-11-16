@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <TargetExt>.rhp</TargetExt>
+    <AssemblyName>TreeThat</AssemblyName>
+    <RootNamespace>TreeThat</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Version>0.1.0-stage0</Version>
+    <Authors>nmtht</Authors>
+    <Description>Low-poly plant block generator for Rhino 8 & 9</Description>
+    <PackageId>TreeThat</PackageId>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <DefineConstants>$(DefineConstants);RHINO_8</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <DefineConstants>$(DefineConstants);RHINO_9</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- RhinoCommon is provided by Rhino at runtime. For development use NuGet. -->
+    <PackageReference Include="RhinoCommon" Version="8.*" Condition="'$(TargetFramework)' == 'net8.0'" />
+    <!-- For Rhino 9 development you may need the corresponding package when available -->
+    <PackageReference Include="RhinoCommon" Version="8.*" Condition="'$(TargetFramework)' == 'net10.0'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\**\*" />
+  </ItemGroup>
+
+</Project>
