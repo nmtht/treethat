@@ -47,17 +47,17 @@ namespace TreeThat.UI
 
         #region IPanel implementation
 
-        public void PanelShown(uint documentSerialNumber, bool on)
+        public void PanelShown(uint documentSerialNumber, ShowPanelReason reason)
         {
             // Called when panel becomes visible
         }
 
-        public void PanelHidden(uint documentSerialNumber, bool on)
+        public void PanelHidden(uint documentSerialNumber, ShowPanelReason reason)
         {
             // Called when panel is hidden
         }
 
-        public void PanelClosing(uint documentSerialNumber, bool on)
+        public void PanelClosing(uint documentSerialNumber, bool onCloseDocument)
         {
             // Called when panel is closing
         }
