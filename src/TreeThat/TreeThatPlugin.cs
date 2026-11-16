@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using Rhino;
 using Rhino.PlugIns;
 using Rhino.UI;
@@ -10,6 +11,7 @@ namespace TreeThat
     /// TreeThat — Low-poly plant block generator for Rhino.
     /// Stage 0 scaffold.
     /// </summary>
+    [Guid("C3D4E5F6-A7B8-9012-CDEF-123456789012")]
     public class TreeThatPlugin : PlugIn
     {
         public TreeThatPlugin()
