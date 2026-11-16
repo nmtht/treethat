@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Eto.Drawing;
 using Eto.Forms;
 using Rhino;
@@ -10,8 +11,7 @@ namespace TreeThat.UI
 {
     /// <summary>
     /// Main dockable panel for TreeThat.
-    /// Stage 1: parameters + generate + create block.
-    /// Previous generated mesh/instance is removed on each new generation.
+    /// Stage 1: presets + parameters + generate + create block.
     /// </summary>
     [System.Runtime.InteropServices.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")]
     public class MainPanel : Panel, IPanel
@@ -19,9 +19,10 @@ namespace TreeThat.UI
         public static Guid PanelId => typeof(MainPanel).GUID;
 
         readonly PlantParams _params = new PlantParams();
-
-        // Last generated object in the active document (mesh or instance)
         Guid _lastObjectId = Guid.Empty;
+
+        DropDown _presetDrop = null!;
+        Label _presetInfo = null!;
 
         NumericStepper _height = null!;
         NumericStepper _levels = null!;
@@ -37,6 +38,7 @@ namespace TreeThat.UI
         public MainPanel()
         {
             BuildUi();
+            ReloadPresets();
         }
 
         void BuildUi()
@@ -61,6 +63,32 @@ namespace TreeThat.UI
 
             layout.AddRow(null);
 
+            // --- Presets ---
+            layout.AddRow(SectionLabel("Presets"));
+            _presetDrop = new DropDown { Width = 180 };
+            _presetDrop.SelectedIndexChanged += OnPresetSelected;
+            layout.AddRow(_presetDrop);
+
+            _presetInfo = new Label
+            {
+                Text = "",
+                TextColor = Colors.Gray,
+                Wrap = WrapMode.Word
+            };
+            layout.AddRow(_presetInfo);
+
+            var btnApply = new Button { Text = "Apply Preset" };
+            btnApply.Click += (s, e) => ApplySelectedPreset();
+
+            var btnSave = new Button { Text = "Save as Preset…" };
+            btnSave.Click += OnSavePreset;
+
+            layout.AddRow(btnApply);
+            layout.AddRow(btnSave);
+
+            layout.AddRow(null);
+
+            // --- Parameters ---
             layout.AddRow(SectionLabel("Trunk"));
             _height = AddStepper(layout, "Height", _params.Height, 0.5, 50, 0.5);
             _baseRadius = AddStepper(layout, "Base radius", _params.BaseRadius, 0.02, 2, 0.02);
@@ -134,6 +162,85 @@ namespace TreeThat.UI
             return stepper;
         }
 
+        void ReloadPresets()
+        {
+            _presetDrop.Items.Clear();
+            foreach (var p in PresetStore.All())
+            {
+                _presetDrop.Items.Add($"{p.Category} / {p.Name}");
+            }
+
+            if (_presetDrop.Items.Count > 0)
+            {
+                _presetDrop.SelectedIndex = 0;
+                OnPresetSelected(null, EventArgs.Empty);
+            }
+        }
+
+        PlantPreset? SelectedPreset()
+        {
+            int i = _presetDrop.SelectedIndex;
+            if (i < 0)
+                return null;
+
+            var list = PresetStore.All().ToList();
+            if (i >= list.Count)
+                return null;
+
+            return list[i];
+        }
+
+        void OnPresetSelected(object? sender, EventArgs e)
+        {
+            var preset = SelectedPreset();
+            if (preset == null)
+            {
+                _presetInfo.Text = "";
+                return;
+            }
+
+            _presetInfo.Text = string.IsNullOrWhiteSpace(preset.Description)
+                ? preset.Category
+                : preset.Description;
+        }
+
+        void ApplySelectedPreset()
+        {
+            var preset = SelectedPreset();
+            if (preset == null)
+                return;
+
+            WriteParamsToUi(preset.ToParams());
+            _status.Text = $"Preset: {preset.Name}";
+        }
+
+        void WriteParamsToUi(PlantParams p)
+        {
+            _height.Value = p.Height;
+            _baseRadius.Value = p.BaseRadius;
+            _levels.Value = p.BranchLevels;
+            _branches.Value = p.BranchesPerNode;
+            _angle.Value = p.BranchAngle;
+            _density.Value = p.FoliageDensity;
+            _leafSize.Value = p.LeafSize;
+            _polyBudget.Value = p.PolyBudget;
+            _seed.Value = p.Seed;
+
+            // Keep full params object in sync (ratios not on UI yet)
+            _params.Height = p.Height;
+            _params.BaseRadius = p.BaseRadius;
+            _params.BranchLevels = p.BranchLevels;
+            _params.BranchesPerNode = p.BranchesPerNode;
+            _params.BranchAngle = p.BranchAngle;
+            _params.FoliageDensity = p.FoliageDensity;
+            _params.LeafSize = p.LeafSize;
+            _params.PolyBudget = p.PolyBudget;
+            _params.Seed = p.Seed;
+            _params.LengthRatio = p.LengthRatio;
+            _params.RadiusRatio = p.RadiusRatio;
+            _params.TubeSegments = p.TubeSegments;
+        }
+
         void ReadParams()
         {
             _params.Height = _height.Value;
@@ -147,9 +254,65 @@ namespace TreeThat.UI
             _params.Seed = (int)_seed.Value;
         }
 
-        /// <summary>
-        /// Deletes the previously generated object (mesh or block instance) if it still exists.
-        /// </summary>
+        void OnSavePreset(object? sender, EventArgs e)
+        {
+            ReadParams();
+
+            var nameDlg = new Dialog<bool>
+            {
+                Title = "Save Preset",
+                ClientSize = new Size(320, 120),
+                Padding = 12
+            };
+
+            var nameBox = new TextBox { Text = "My Plant", Width = 200 };
+            var catBox = new TextBox { Text = "Custom", Width = 200 };
+            var ok = new Button { Text = "Save" };
+            var cancel = new Button { Text = "Cancel" };
+
+            ok.Click += (s, ev) => nameDlg.Close(true);
+            cancel.Click += (s, ev) => nameDlg.Close(false);
+
+            var dl = new DynamicLayout { DefaultSpacing = new Size(6, 6) };
+            dl.AddRow(new Label { Text = "Name" }, nameBox);
+            dl.AddRow(new Label { Text = "Category" }, catBox);
+            dl.AddRow(null);
+            dl.AddRow(null, new StackLayout
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                Items = { cancel, ok }
+            });
+
+            nameDlg.Content = dl;
+            nameDlg.DefaultButton = ok;
+            nameDlg.AbortButton = cancel;
+
+            if (nameDlg.ShowModal(this) != true)
+                return;
+
+            var preset = PlantPreset.FromParams(
+                nameBox.Text.Trim(),
+                string.IsNullOrWhiteSpace(catBox.Text) ? "Custom" : catBox.Text.Trim(),
+                "User preset",
+                _params);
+
+            PresetStore.SaveUserPreset(preset);
+            ReloadPresets();
+
+            // Select the one we just saved
+            for (int i = 0; i < _presetDrop.Items.Count; i++)
+            {
+                if (_presetDrop.Items[i].Text.EndsWith("/ " + preset.Name, StringComparison.Ordinal))
+                {
+                    _presetDrop.SelectedIndex = i;
+                    break;
+                }
+            }
+
+            _status.Text = $"Saved preset: {preset.Name}";
+        }
+
         void DeletePrevious(RhinoDoc doc)
         {
             if (_lastObjectId == Guid.Empty)
@@ -181,7 +344,7 @@ namespace TreeThat.UI
                 _lastObjectId = id;
 
                 _status.Text = id != Guid.Empty
-                    ? $"Mesh added · {mesh.Faces.Count} faces"
+                    ? $"Mesh · {mesh.Faces.Count} faces"
                     : "Failed to add mesh";
             }
             catch (Exception ex)
@@ -214,7 +377,7 @@ namespace TreeThat.UI
                 _lastObjectId = id;
 
                 _status.Text = id != Guid.Empty
-                    ? $"Block created · {mesh.Faces.Count} faces"
+                    ? $"Block · {mesh.Faces.Count} faces"
                     : "Failed to create block";
             }
             catch (Exception ex)
