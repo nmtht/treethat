@@ -11,7 +11,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Version>0.1.0-stage0</Version>
     <Authors>nmtht</Authors>
-    <Description>Low-poly plant block generator for Rhino 8 & 9</Description>
+    <Description>Low-poly plant block generator for Rhino 8 and 9</Description>
     <PackageId>TreeThat</PackageId>
   </PropertyGroup>
 
