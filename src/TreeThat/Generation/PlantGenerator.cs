@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Rhino.Geometry;
 
 namespace TreeThat.Generation
@@ -14,7 +13,6 @@ namespace TreeThat.Generation
             var skeleton = PlantSkeleton.Build(p);
             var mesh = new Mesh();
 
-            // Trunk + branches as low-poly tubes
             foreach (var seg in skeleton.Segments)
             {
                 var tube = CreateTube(seg, p.TubeSegments);
@@ -22,7 +20,6 @@ namespace TreeThat.Generation
                     mesh.Append(tube);
             }
 
-            // Leaf cards
             int maxLeaves = EstimateMaxLeaves(p, skeleton);
             int leafCount = Math.Min(skeleton.LeafPoints.Count, maxLeaves);
 
@@ -45,15 +42,13 @@ namespace TreeThat.Generation
 
         static int EstimateMaxLeaves(PlantParams p, PlantSkeleton skeleton)
         {
-            // Rough budget: each tube segment ~ TubeSegments*2 faces, each leaf = 2 faces
+            // Tubes are cheap; prioritise foliage. Soft budget: allow ~70%+ for leaves.
             int tubeFaces = skeleton.Segments.Count * p.TubeSegments * 2;
-            int remaining = Math.Max(0, p.PolyBudget - tubeFaces);
-            return remaining / 2; // 2 triangles per leaf card
+            int softBudget = Math.Max(p.PolyBudget, tubeFaces + 200);
+            int remaining = Math.Max(softBudget - tubeFaces, (int)(p.PolyBudget * 0.7));
+            return Math.Max(remaining / 2, 40); // at least ~40 leaf cards
         }
 
-        /// <summary>
-        /// Simple tapered tube (prism) along a segment.
-        /// </summary>
         static Mesh? CreateTube(BranchSegment seg, int sides)
         {
             sides = Math.Max(3, Math.Min(sides, 8));
@@ -63,7 +58,6 @@ namespace TreeThat.Generation
                 return null;
             dir.Unitize();
 
-            // Frame
             Vector3d x, y;
             if (Math.Abs(dir.Z) < 0.9)
                 x = Vector3d.CrossProduct(dir, Vector3d.ZAxis);
@@ -86,13 +80,11 @@ namespace TreeThat.Generation
                 top[i] = seg.End + offsetT;
             }
 
-            // Vertices: bottom then top
             for (int i = 0; i < sides; i++)
                 mesh.Vertices.Add(bottom[i]);
             for (int i = 0; i < sides; i++)
                 mesh.Vertices.Add(top[i]);
 
-            // Side faces
             for (int i = 0; i < sides; i++)
             {
                 int next = (i + 1) % sides;
@@ -100,8 +92,6 @@ namespace TreeThat.Generation
                 int b1 = next;
                 int t0 = i + sides;
                 int t1 = next + sides;
-
-                // Two triangles
                 mesh.Faces.AddFace(b0, b1, t1);
                 mesh.Faces.AddFace(b0, t1, t0);
             }
@@ -109,16 +99,12 @@ namespace TreeThat.Generation
             return mesh;
         }
 
-        /// <summary>
-        /// Single diamond / card leaf (2 triangles).
-        /// </summary>
         static Mesh? CreateLeafCard(Point3d center, Vector3d normal, double size, int seed)
         {
             if (normal.IsTiny())
                 normal = Vector3d.ZAxis;
             normal.Unitize();
 
-            // Build local frame
             Vector3d x;
             if (Math.Abs(normal.Z) < 0.9)
                 x = Vector3d.CrossProduct(normal, Vector3d.ZAxis);
@@ -128,28 +114,24 @@ namespace TreeThat.Generation
             var y = Vector3d.CrossProduct(normal, x);
             y.Unitize();
 
-            // Slight random rotation for variety
             var rng = new Random(seed);
             double rot = rng.NextDouble() * Math.PI * 2;
             var x2 = x * Math.Cos(rot) + y * Math.Sin(rot);
             var y2 = -x * Math.Sin(rot) + y * Math.Cos(rot);
 
             double half = size * 0.5;
-            // Diamond shape
-            var p0 = center + x2 * half;           // right
-            var p1 = center + y2 * half * 1.2;     // tip
-            var p2 = center - x2 * half;           // left
-            var p3 = center - y2 * half * 0.6;     // base
+            var p0 = center + x2 * half;
+            var p1 = center + y2 * half * 1.2;
+            var p2 = center - x2 * half;
+            var p3 = center - y2 * half * 0.6;
 
             var mesh = new Mesh();
             mesh.Vertices.Add(p0);
             mesh.Vertices.Add(p1);
             mesh.Vertices.Add(p2);
             mesh.Vertices.Add(p3);
-
             mesh.Faces.AddFace(0, 1, 2);
             mesh.Faces.AddFace(0, 2, 3);
-
             return mesh;
         }
     }
