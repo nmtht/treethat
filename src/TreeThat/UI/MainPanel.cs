@@ -11,7 +11,7 @@ namespace TreeThat.UI
 {
     /// <summary>
     /// Main dockable panel for TreeThat.
-    /// Stage 1: presets + parameters + generate + create block.
+    /// Stage 1: presets + parameters + generate + hedge along curve.
     /// </summary>
     [System.Runtime.InteropServices.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")]
     public class MainPanel : Panel, IPanel
@@ -33,6 +33,7 @@ namespace TreeThat.UI
         NumericStepper _polyBudget = null!;
         NumericStepper _seed = null!;
         NumericStepper _baseRadius = null!;
+        NumericStepper _hedgeSpacing = null!;
         Label _status = null!;
 
         public MainPanel()
@@ -63,7 +64,6 @@ namespace TreeThat.UI
 
             layout.AddRow(null);
 
-            // --- Presets ---
             layout.AddRow(SectionLabel("Presets"));
             _presetDrop = new DropDown { Width = 180 };
             _presetDrop.SelectedIndexChanged += OnPresetSelected;
@@ -88,22 +88,21 @@ namespace TreeThat.UI
 
             layout.AddRow(null);
 
-            // --- Parameters ---
             layout.AddRow(SectionLabel("Trunk"));
             _height = AddStepper(layout, "Height", _params.Height, 0.5, 50, 0.5);
             _baseRadius = AddStepper(layout, "Base radius", _params.BaseRadius, 0.02, 2, 0.02);
 
             layout.AddRow(SectionLabel("Branching"));
-            _levels = AddStepper(layout, "Levels", _params.BranchLevels, 0, 5, 1);
-            _branches = AddStepper(layout, "Branches / node", _params.BranchesPerNode, 2, 5, 1);
-            _angle = AddStepper(layout, "Branch angle°", _params.BranchAngle, 10, 60, 1);
+            _levels = AddStepper(layout, "Levels", _params.BranchLevels, 0, 6, 1);
+            _branches = AddStepper(layout, "Branches / node", _params.BranchesPerNode, 2, 6, 1);
+            _angle = AddStepper(layout, "Branch angle°", _params.BranchAngle, 10, 70, 1);
 
             layout.AddRow(SectionLabel("Foliage"));
             _density = AddStepper(layout, "Density", _params.FoliageDensity, 0, 1, 0.1);
             _leafSize = AddStepper(layout, "Leaf size", _params.LeafSize, 0.05, 2, 0.05);
 
             layout.AddRow(SectionLabel("Quality"));
-            _polyBudget = AddStepper(layout, "Poly budget", _params.PolyBudget, 100, 5000, 50);
+            _polyBudget = AddStepper(layout, "Poly budget", _params.PolyBudget, 100, 8000, 50);
             _seed = AddStepper(layout, "Seed", _params.Seed, 0, 99999, 1);
 
             layout.AddRow(null);
@@ -123,6 +122,21 @@ namespace TreeThat.UI
             layout.AddRow(btnGenerate);
             layout.AddRow(btnBlock);
             layout.AddRow(btnRandom);
+
+            layout.AddRow(null);
+            layout.AddRow(SectionLabel("Hedge"));
+            _hedgeSpacing = AddStepper(layout, "Spacing", 1.2, 0.3, 20, 0.1);
+
+            var btnHedge = new Button { Text = "Hedge along Curve…" };
+            btnHedge.Click += OnHedgeAlongCurve;
+            layout.AddRow(btnHedge);
+
+            layout.AddRow(new Label
+            {
+                Text = "Select path curve in viewport after click",
+                TextColor = Colors.Gray,
+                Font = new Font(SystemFont.Default, 9)
+            });
 
             layout.AddRow(null);
 
@@ -166,9 +180,7 @@ namespace TreeThat.UI
         {
             _presetDrop.Items.Clear();
             foreach (var p in PresetStore.All())
-            {
                 _presetDrop.Items.Add($"{p.Category} / {p.Name}");
-            }
 
             if (_presetDrop.Items.Count > 0)
             {
@@ -180,36 +192,23 @@ namespace TreeThat.UI
         PlantPreset? SelectedPreset()
         {
             int i = _presetDrop.SelectedIndex;
-            if (i < 0)
-                return null;
-
+            if (i < 0) return null;
             var list = PresetStore.All().ToList();
-            if (i >= list.Count)
-                return null;
-
-            return list[i];
+            return i < list.Count ? list[i] : null;
         }
 
         void OnPresetSelected(object? sender, EventArgs e)
         {
             var preset = SelectedPreset();
-            if (preset == null)
-            {
-                _presetInfo.Text = "";
-                return;
-            }
-
-            _presetInfo.Text = string.IsNullOrWhiteSpace(preset.Description)
-                ? preset.Category
-                : preset.Description;
+            _presetInfo.Text = preset == null
+                ? ""
+                : (string.IsNullOrWhiteSpace(preset.Description) ? preset.Category : preset.Description);
         }
 
         void ApplySelectedPreset()
         {
             var preset = SelectedPreset();
-            if (preset == null)
-                return;
-
+            if (preset == null) return;
             WriteParamsToUi(preset.ToParams());
             _status.Text = $"Preset: {preset.Name}";
         }
@@ -226,7 +225,6 @@ namespace TreeThat.UI
             _polyBudget.Value = p.PolyBudget;
             _seed.Value = p.Seed;
 
-            // Keep full params object in sync (ratios not on UI yet)
             _params.Height = p.Height;
             _params.BaseRadius = p.BaseRadius;
             _params.BranchLevels = p.BranchLevels;
@@ -300,7 +298,6 @@ namespace TreeThat.UI
             PresetStore.SaveUserPreset(preset);
             ReloadPresets();
 
-            // Select the one we just saved
             for (int i = 0; i < _presetDrop.Items.Count; i++)
             {
                 if (_presetDrop.Items[i].Text.EndsWith("/ " + preset.Name, StringComparison.Ordinal))
@@ -379,6 +376,36 @@ namespace TreeThat.UI
                 _status.Text = id != Guid.Empty
                     ? $"Block · {mesh.Faces.Count} faces"
                     : "Failed to create block";
+            }
+            catch (Exception ex)
+            {
+                _status.Text = "Error: " + ex.Message;
+                RhinoApp.WriteLine("TreeThat error: " + ex);
+            }
+        }
+
+        void OnHedgeAlongCurve(object? sender, EventArgs e)
+        {
+            var doc = RhinoDoc.ActiveDoc;
+            if (doc == null)
+            {
+                _status.Text = "No active document";
+                return;
+            }
+
+            try
+            {
+                ReadParams();
+                double spacing = _hedgeSpacing.Value;
+
+                _status.Text = "Select curve in viewport…";
+                RhinoApp.WriteLine("TreeThat: select a curve for the hedge path");
+
+                int placed = HedgeAlongCurve.RunInteractive(doc, _params, spacing);
+                if (placed < 0)
+                    _status.Text = "Hedge cancelled";
+                else
+                    _status.Text = $"Hedge · {placed} units";
             }
             catch (Exception ex)
             {
