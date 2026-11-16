@@ -7,9 +7,6 @@ using System.Text.Json.Serialization;
 
 namespace TreeThat.Generation
 {
-    /// <summary>
-    /// Named snapshot of PlantParams.
-    /// </summary>
     public class PlantPreset
     {
         public string Name { get; set; } = "Unnamed";
@@ -23,9 +20,9 @@ namespace TreeThat.Generation
         public double BaseRadius { get; set; } = 0.15;
         public int BranchesPerNode { get; set; } = 3;
         public double BranchAngle { get; set; } = 35.0;
-        public double FoliageDensity { get; set; } = 0.7;
+        public double FoliageDensity { get; set; } = 0.85;
         public double LeafSize { get; set; } = 0.35;
-        public int PolyBudget { get; set; } = 800;
+        public int PolyBudget { get; set; } = 1200;
         public int Seed { get; set; } = 42;
         public int TubeSegments { get; set; } = 4;
 
@@ -71,9 +68,6 @@ namespace TreeThat.Generation
         }
     }
 
-    /// <summary>
-    /// Built-in + user presets (JSON in app data).
-    /// </summary>
     public static class PresetStore
     {
         static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
@@ -89,7 +83,6 @@ namespace TreeThat.Generation
         {
             foreach (var p in BuiltIn)
                 yield return p;
-
             foreach (var p in LoadUserPresets())
                 yield return p;
         }
@@ -120,8 +113,7 @@ namespace TreeThat.Generation
 
             var safe = string.Join("_", preset.Name.Split(Path.GetInvalidFileNameChars()));
             var path = Path.Combine(UserPresetsDirectory, safe + ".json");
-            var json = JsonSerializer.Serialize(preset, JsonOptions);
-            File.WriteAllText(path, json);
+            File.WriteAllText(path, JsonSerializer.Serialize(preset, JsonOptions));
         }
 
         public static List<PlantPreset> LoadUserPresets()
@@ -133,21 +125,14 @@ namespace TreeThat.Generation
                 {
                     try
                     {
-                        var json = File.ReadAllText(file);
-                        var p = JsonSerializer.Deserialize<PlantPreset>(json, JsonOptions);
+                        var p = JsonSerializer.Deserialize<PlantPreset>(File.ReadAllText(file), JsonOptions);
                         if (p != null && !string.IsNullOrWhiteSpace(p.Name))
                             list.Add(p);
                     }
-                    catch
-                    {
-                        // skip bad files
-                    }
+                    catch { }
                 }
             }
-            catch
-            {
-                // no user dir yet
-            }
+            catch { }
 
             return list.OrderBy(p => p.Category).ThenBy(p => p.Name).ToList();
         }
@@ -156,7 +141,6 @@ namespace TreeThat.Generation
         {
             return new List<PlantPreset>
             {
-                // 1. Tall vertical oak-like
                 new PlantPreset
                 {
                     Name = "Oak",
@@ -169,14 +153,12 @@ namespace TreeThat.Generation
                     BaseRadius = 0.28,
                     BranchesPerNode = 3,
                     BranchAngle = 38,
-                    FoliageDensity = 0.85,
-                    LeafSize = 0.45,
-                    PolyBudget = 1400,
+                    FoliageDensity = 1.0,
+                    LeafSize = 0.48,
+                    PolyBudget = 2200,
                     Seed = 101,
                     TubeSegments = 5
                 },
-
-                // 2. Narrow upright pine / fir
                 new PlantPreset
                 {
                     Name = "Pine",
@@ -189,14 +171,31 @@ namespace TreeThat.Generation
                     BaseRadius = 0.18,
                     BranchesPerNode = 4,
                     BranchAngle = 22,
-                    FoliageDensity = 0.95,
-                    LeafSize = 0.18,
-                    PolyBudget = 1600,
+                    FoliageDensity = 1.0,
+                    LeafSize = 0.2,
+                    PolyBudget = 2400,
                     Seed = 202,
                     TubeSegments = 4
                 },
-
-                // 3. Wide low bush / shrub
+                // Ель / пихта — denser horizontal tiers than Pine
+                new PlantPreset
+                {
+                    Name = "Fir",
+                    Category = "Conifer",
+                    Description = "Spruce/fir — layered horizontal branches, dense crown",
+                    Height = 9.0,
+                    BranchLevels = 5,
+                    LengthRatio = 0.58,
+                    RadiusRatio = 0.75,
+                    BaseRadius = 0.2,
+                    BranchesPerNode = 5,
+                    BranchAngle = 28,
+                    FoliageDensity = 1.0,
+                    LeafSize = 0.16,
+                    PolyBudget = 2800,
+                    Seed = 212,
+                    TubeSegments = 4
+                },
                 new PlantPreset
                 {
                     Name = "Bush",
@@ -210,13 +209,30 @@ namespace TreeThat.Generation
                     BranchesPerNode = 4,
                     BranchAngle = 55,
                     FoliageDensity = 1.0,
-                    LeafSize = 0.22,
-                    PolyBudget = 900,
+                    LeafSize = 0.24,
+                    PolyBudget = 1400,
                     Seed = 303,
                     TubeSegments = 3
                 },
-
-                // 4. Sparse dry / desert tree
+                // Plant shape for hedges along a curve
+                new PlantPreset
+                {
+                    Name = "Hedge Unit",
+                    Category = "Hedge",
+                    Description = "Dense low unit for hedges along a curve",
+                    Height = 1.4,
+                    BranchLevels = 2,
+                    LengthRatio = 0.7,
+                    RadiusRatio = 0.72,
+                    BaseRadius = 0.1,
+                    BranchesPerNode = 4,
+                    BranchAngle = 50,
+                    FoliageDensity = 1.0,
+                    LeafSize = 0.2,
+                    PolyBudget = 600,
+                    Seed = 909,
+                    TubeSegments = 3
+                },
                 new PlantPreset
                 {
                     Name = "Dry Tree",
@@ -229,14 +245,12 @@ namespace TreeThat.Generation
                     BaseRadius = 0.2,
                     BranchesPerNode = 2,
                     BranchAngle = 42,
-                    FoliageDensity = 0.15,
+                    FoliageDensity = 0.2,
                     LeafSize = 0.25,
-                    PolyBudget = 500,
+                    PolyBudget = 600,
                     Seed = 404,
                     TubeSegments = 4
                 },
-
-                // 5. Young sapling
                 new PlantPreset
                 {
                     Name = "Sapling",
@@ -249,14 +263,12 @@ namespace TreeThat.Generation
                     BaseRadius = 0.06,
                     BranchesPerNode = 2,
                     BranchAngle = 28,
-                    FoliageDensity = 0.55,
-                    LeafSize = 0.28,
-                    PolyBudget = 450,
+                    FoliageDensity = 0.75,
+                    LeafSize = 0.3,
+                    PolyBudget = 800,
                     Seed = 505,
                     TubeSegments = 3
                 },
-
-                // 6. Weeping / drooping silhouette (wide angle + long branches)
                 new PlantPreset
                 {
                     Name = "Weeping",
@@ -269,14 +281,12 @@ namespace TreeThat.Generation
                     BaseRadius = 0.16,
                     BranchesPerNode = 3,
                     BranchAngle = 58,
-                    FoliageDensity = 0.9,
-                    LeafSize = 0.32,
-                    PolyBudget = 1200,
+                    FoliageDensity = 1.0,
+                    LeafSize = 0.34,
+                    PolyBudget = 2000,
                     Seed = 606,
                     TubeSegments = 4
                 },
-
-                // 7. Palm-like (few levels, high angle contrast via long trunk + top burst)
                 new PlantPreset
                 {
                     Name = "Palm-ish",
@@ -289,14 +299,12 @@ namespace TreeThat.Generation
                     BaseRadius = 0.22,
                     BranchesPerNode = 5,
                     BranchAngle = 48,
-                    FoliageDensity = 0.8,
-                    LeafSize = 0.7,
-                    PolyBudget = 700,
+                    FoliageDensity = 0.95,
+                    LeafSize = 0.75,
+                    PolyBudget = 1200,
                     Seed = 707,
                     TubeSegments = 5
                 },
-
-                // 8. Ultra low-poly stylized (budget showcase)
                 new PlantPreset
                 {
                     Name = "Stylized Low",
@@ -309,9 +317,9 @@ namespace TreeThat.Generation
                     BaseRadius = 0.25,
                     BranchesPerNode = 3,
                     BranchAngle = 40,
-                    FoliageDensity = 0.5,
+                    FoliageDensity = 0.7,
                     LeafSize = 0.55,
-                    PolyBudget = 200,
+                    PolyBudget = 350,
                     Seed = 808,
                     TubeSegments = 3
                 }
