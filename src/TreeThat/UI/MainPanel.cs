@@ -9,10 +9,6 @@ using TreeThat.Generation;
 
 namespace TreeThat.UI
 {
-    /// <summary>
-    /// Main dockable panel for TreeThat.
-    /// Stage 1: presets + parameters + generate + hedge along curve.
-    /// </summary>
     [System.Runtime.InteropServices.Guid("B2C3D4E5-F6A7-8901-BCDE-F12345678901")]
     public class MainPanel : Panel, IPanel
     {
@@ -93,9 +89,9 @@ namespace TreeThat.UI
             _baseRadius = AddStepper(layout, "Base radius", _params.BaseRadius, 0.02, 2, 0.02);
 
             layout.AddRow(SectionLabel("Branching"));
-            _levels = AddStepper(layout, "Levels", _params.BranchLevels, 0, 6, 1);
-            _branches = AddStepper(layout, "Branches / node", _params.BranchesPerNode, 2, 6, 1);
-            _angle = AddStepper(layout, "Branch angle°", _params.BranchAngle, 10, 70, 1);
+            _levels = AddStepper(layout, "Levels", _params.BranchLevels, 0, 8, 1);
+            _branches = AddStepper(layout, "Branches / node", _params.BranchesPerNode, 2, 8, 1);
+            _angle = AddStepper(layout, "Branch angle°", _params.BranchAngle, 10, 90, 1);
 
             layout.AddRow(SectionLabel("Foliage"));
             _density = AddStepper(layout, "Density", _params.FoliageDensity, 0, 1, 0.1);
@@ -114,10 +110,7 @@ namespace TreeThat.UI
             btnBlock.Click += OnCreateBlock;
 
             var btnRandom = new Button { Text = "Random Seed" };
-            btnRandom.Click += (s, e) =>
-            {
-                _seed.Value = new Random().Next(0, 99999);
-            };
+            btnRandom.Click += (s, e) => { _seed.Value = new Random().Next(0, 99999); };
 
             layout.AddRow(btnGenerate);
             layout.AddRow(btnBlock);
@@ -140,25 +133,18 @@ namespace TreeThat.UI
 
             layout.AddRow(null);
 
-            _status = new Label
-            {
-                Text = "Ready",
-                TextColor = Colors.Gray
-            };
+            _status = new Label { Text = "Ready", TextColor = Colors.Gray };
             layout.AddRow(_status);
 
             Content = new Scrollable { Content = layout };
         }
 
-        static Label SectionLabel(string text)
+        static Label SectionLabel(string text) => new Label
         {
-            return new Label
-            {
-                Text = text,
-                Font = new Font(SystemFont.Bold, 10),
-                TextColor = Colors.Gray
-            };
-        }
+            Text = text,
+            Font = new Font(SystemFont.Bold, 10),
+            TextColor = Colors.Gray
+        };
 
         NumericStepper AddStepper(DynamicLayout layout, string label, double value, double min, double max, double step)
         {
@@ -171,7 +157,6 @@ namespace TreeThat.UI
                 DecimalPlaces = step < 1 ? 2 : 0,
                 Width = 90
             };
-
             layout.AddRow(new Label { Text = label, VerticalAlignment = VerticalAlignment.Center }, stepper);
             return stepper;
         }
@@ -210,7 +195,7 @@ namespace TreeThat.UI
             var preset = SelectedPreset();
             if (preset == null) return;
             WriteParamsToUi(preset.ToParams());
-            _status.Text = $"Preset: {preset.Name}";
+            _status.Text = $"Preset: {preset.Name}" + (preset.ConiferStyle ? " (conifer)" : "");
         }
 
         void WriteParamsToUi(PlantParams p)
@@ -237,6 +222,7 @@ namespace TreeThat.UI
             _params.LengthRatio = p.LengthRatio;
             _params.RadiusRatio = p.RadiusRatio;
             _params.TubeSegments = p.TubeSegments;
+            _params.ConiferStyle = p.ConiferStyle;
         }
 
         void ReadParams()
@@ -250,6 +236,7 @@ namespace TreeThat.UI
             _params.LeafSize = _leafSize.Value;
             _params.PolyBudget = (int)_polyBudget.Value;
             _params.Seed = (int)_seed.Value;
+            // ConiferStyle kept from last Apply Preset (not on UI yet)
         }
 
         void OnSavePreset(object? sender, EventArgs e)
@@ -312,37 +299,26 @@ namespace TreeThat.UI
 
         void DeletePrevious(RhinoDoc doc)
         {
-            if (_lastObjectId == Guid.Empty)
-                return;
-
+            if (_lastObjectId == Guid.Empty) return;
             var obj = doc.Objects.FindId(_lastObjectId);
             if (obj != null)
                 doc.Objects.Delete(obj, true);
-
             _lastObjectId = Guid.Empty;
         }
 
         void OnGenerateMesh(object? sender, EventArgs e)
         {
             var doc = RhinoDoc.ActiveDoc;
-            if (doc == null)
-            {
-                _status.Text = "No active document";
-                return;
-            }
+            if (doc == null) { _status.Text = "No active document"; return; }
 
             try
             {
                 ReadParams();
                 DeletePrevious(doc);
-
                 var mesh = PlantGenerator.Generate(_params);
                 var id = BlockFactory.AddMesh(doc, mesh, $"TreeThat_{_params.Seed}");
                 _lastObjectId = id;
-
-                _status.Text = id != Guid.Empty
-                    ? $"Mesh · {mesh.Faces.Count} faces"
-                    : "Failed to add mesh";
+                _status.Text = id != Guid.Empty ? $"Mesh · {mesh.Faces.Count} faces" : "Failed to add mesh";
             }
             catch (Exception ex)
             {
@@ -354,28 +330,16 @@ namespace TreeThat.UI
         void OnCreateBlock(object? sender, EventArgs e)
         {
             var doc = RhinoDoc.ActiveDoc;
-            if (doc == null)
-            {
-                _status.Text = "No active document";
-                return;
-            }
+            if (doc == null) { _status.Text = "No active document"; return; }
 
             try
             {
                 ReadParams();
                 DeletePrevious(doc);
-
                 var mesh = PlantGenerator.Generate(_params);
-                var id = BlockFactory.CreateBlock(
-                    doc,
-                    mesh,
-                    $"TT_Plant_{_params.Seed}",
-                    Point3d.Origin);
+                var id = BlockFactory.CreateBlock(doc, mesh, $"TT_Plant_{_params.Seed}", Point3d.Origin);
                 _lastObjectId = id;
-
-                _status.Text = id != Guid.Empty
-                    ? $"Block · {mesh.Faces.Count} faces"
-                    : "Failed to create block";
+                _status.Text = id != Guid.Empty ? $"Block · {mesh.Faces.Count} faces" : "Failed to create block";
             }
             catch (Exception ex)
             {
@@ -387,25 +351,14 @@ namespace TreeThat.UI
         void OnHedgeAlongCurve(object? sender, EventArgs e)
         {
             var doc = RhinoDoc.ActiveDoc;
-            if (doc == null)
-            {
-                _status.Text = "No active document";
-                return;
-            }
+            if (doc == null) { _status.Text = "No active document"; return; }
 
             try
             {
                 ReadParams();
-                double spacing = _hedgeSpacing.Value;
-
                 _status.Text = "Select curve in viewport…";
-                RhinoApp.WriteLine("TreeThat: select a curve for the hedge path");
-
-                int placed = HedgeAlongCurve.RunInteractive(doc, _params, spacing);
-                if (placed < 0)
-                    _status.Text = "Hedge cancelled";
-                else
-                    _status.Text = $"Hedge · {placed} units";
+                int placed = HedgeAlongCurve.RunInteractive(doc, _params, _hedgeSpacing.Value);
+                _status.Text = placed < 0 ? "Hedge cancelled" : $"Hedge · {placed} units";
             }
             catch (Exception ex)
             {
@@ -414,12 +367,8 @@ namespace TreeThat.UI
             }
         }
 
-        #region IPanel
-
         public void PanelShown(uint documentSerialNumber, ShowPanelReason reason) { }
         public void PanelHidden(uint documentSerialNumber, ShowPanelReason reason) { }
         public void PanelClosing(uint documentSerialNumber, bool onCloseDocument) { }
-
-        #endregion
     }
 }
