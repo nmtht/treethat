@@ -3,23 +3,36 @@ using Rhino.Geometry;
 
 namespace TreeThat.Generation
 {
-    /// <summary>
-    /// Builds a low-poly mesh from a plant skeleton.
-    /// </summary>
     public static class PlantGenerator
     {
+        /// <summary>Combined mesh (preview).</summary>
         public static Mesh Generate(PlantParams p)
         {
-            var skeleton = PlantSkeleton.Build(p);
-            var mesh = new Mesh();
+            return GenerateDetailed(p).CombinedMesh();
+        }
 
+        /// <summary>Full layered output for block baking.</summary>
+        public static PlantGeometry GenerateDetailed(PlantParams p)
+        {
+            var result = new PlantGeometry();
+            var skeleton = PlantSkeleton.Build(p);
+
+            var branches = new Mesh();
             foreach (var seg in skeleton.Segments)
             {
                 var tube = CreateTube(seg, p.TubeSegments);
                 if (tube != null)
-                    mesh.Append(tube);
+                    branches.Append(tube);
             }
 
+            if (branches.Vertices.Count > 0)
+            {
+                branches.Normals.ComputeNormals();
+                branches.Compact();
+            }
+            result.Branches = branches;
+
+            var leaves = new Mesh();
             int maxLeaves = EstimateMaxLeaves(p, skeleton);
             int leafCount = Math.Min(skeleton.LeafPoints.Count, maxLeaves);
 
@@ -30,32 +43,37 @@ namespace TreeThat.Generation
                     skeleton.LeafNormals[i],
                     p.LeafSize,
                     p.Seed + i);
-
                 if (leaf != null)
-                    mesh.Append(leaf);
+                    leaves.Append(leaf);
             }
 
-            mesh.Normals.ComputeNormals();
-            mesh.Compact();
-            return mesh;
+            if (leaves.Vertices.Count > 0)
+            {
+                leaves.Normals.ComputeNormals();
+                leaves.Compact();
+            }
+            result.Leaves = leaves;
+
+            Entourage2D.Build(skeleton, p, out var lines, out var colorBounds);
+            result.Lines2d = lines;
+            result.ColorBoundaries = colorBounds;
+
+            return result;
         }
 
         static int EstimateMaxLeaves(PlantParams p, PlantSkeleton skeleton)
         {
-            // Tubes are cheap; prioritise foliage. Soft budget: allow ~70%+ for leaves.
             int tubeFaces = skeleton.Segments.Count * p.TubeSegments * 2;
             int softBudget = Math.Max(p.PolyBudget, tubeFaces + 200);
             int remaining = Math.Max(softBudget - tubeFaces, (int)(p.PolyBudget * 0.7));
-            return Math.Max(remaining / 2, 40); // at least ~40 leaf cards
+            return Math.Max(remaining / 2, 40);
         }
 
         static Mesh? CreateTube(BranchSegment seg, int sides)
         {
             sides = Math.Max(3, Math.Min(sides, 8));
-
             var dir = seg.Direction;
-            if (dir.IsTiny())
-                return null;
+            if (dir.IsTiny()) return null;
             dir.Unitize();
 
             Vector3d x, y;
@@ -68,41 +86,29 @@ namespace TreeThat.Generation
             y.Unitize();
 
             var mesh = new Mesh();
-            var bottom = new Point3d[sides];
-            var top = new Point3d[sides];
-
             for (int i = 0; i < sides; i++)
             {
                 double a = 2.0 * Math.PI * i / sides;
-                var offsetB = (x * Math.Cos(a) + y * Math.Sin(a)) * seg.StartRadius;
-                var offsetT = (x * Math.Cos(a) + y * Math.Sin(a)) * seg.EndRadius;
-                bottom[i] = seg.Start + offsetB;
-                top[i] = seg.End + offsetT;
+                mesh.Vertices.Add(seg.Start + (x * Math.Cos(a) + y * Math.Sin(a)) * seg.StartRadius);
             }
-
             for (int i = 0; i < sides; i++)
-                mesh.Vertices.Add(bottom[i]);
-            for (int i = 0; i < sides; i++)
-                mesh.Vertices.Add(top[i]);
+            {
+                double a = 2.0 * Math.PI * i / sides;
+                mesh.Vertices.Add(seg.End + (x * Math.Cos(a) + y * Math.Sin(a)) * seg.EndRadius);
+            }
 
             for (int i = 0; i < sides; i++)
             {
                 int next = (i + 1) % sides;
-                int b0 = i;
-                int b1 = next;
-                int t0 = i + sides;
-                int t1 = next + sides;
-                mesh.Faces.AddFace(b0, b1, t1);
-                mesh.Faces.AddFace(b0, t1, t0);
+                mesh.Faces.AddFace(i, next, next + sides);
+                mesh.Faces.AddFace(i, next + sides, i + sides);
             }
-
             return mesh;
         }
 
         static Mesh? CreateLeafCard(Point3d center, Vector3d normal, double size, int seed)
         {
-            if (normal.IsTiny())
-                normal = Vector3d.ZAxis;
+            if (normal.IsTiny()) normal = Vector3d.ZAxis;
             normal.Unitize();
 
             Vector3d x;
@@ -120,16 +126,11 @@ namespace TreeThat.Generation
             var y2 = -x * Math.Sin(rot) + y * Math.Cos(rot);
 
             double half = size * 0.5;
-            var p0 = center + x2 * half;
-            var p1 = center + y2 * half * 1.2;
-            var p2 = center - x2 * half;
-            var p3 = center - y2 * half * 0.6;
-
             var mesh = new Mesh();
-            mesh.Vertices.Add(p0);
-            mesh.Vertices.Add(p1);
-            mesh.Vertices.Add(p2);
-            mesh.Vertices.Add(p3);
+            mesh.Vertices.Add(center + x2 * half);
+            mesh.Vertices.Add(center + y2 * half * 1.2);
+            mesh.Vertices.Add(center - x2 * half);
+            mesh.Vertices.Add(center - y2 * half * 0.6);
             mesh.Faces.AddFace(0, 1, 2);
             mesh.Faces.AddFace(0, 2, 3);
             return mesh;
