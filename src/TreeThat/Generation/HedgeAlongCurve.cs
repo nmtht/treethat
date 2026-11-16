@@ -1,9 +1,7 @@
 using System;
-using System.Collections.Generic;
 using Rhino;
 using Rhino.DocObjects;
 using Rhino.Geometry;
-using Rhino.Input;
 using Rhino.Input.Custom;
 
 namespace TreeThat.Generation
@@ -13,10 +11,6 @@ namespace TreeThat.Generation
     /// </summary>
     public static class HedgeAlongCurve
     {
-        /// <summary>
-        /// Interactive: pick a curve, then place plants using current params.
-        /// Returns number of placed objects, or -1 on cancel/error.
-        /// </summary>
         public static int RunInteractive(RhinoDoc doc, PlantParams plantParams, double spacing)
         {
             if (doc == null)
@@ -40,10 +34,6 @@ namespace TreeThat.Generation
             return Place(doc, curve, plantParams, spacing);
         }
 
-        /// <summary>
-        /// Places plant meshes along curve at given spacing.
-        /// Slight random scale / rotation / seed per unit for a natural look.
-        /// </summary>
         public static int Place(RhinoDoc doc, Curve curve, PlantParams baseParams, double spacing)
         {
             if (doc == null || curve == null)
@@ -56,20 +46,16 @@ namespace TreeThat.Generation
             var rng = new Random(baseParams.Seed);
             int placed = 0;
 
-            // Even parameter distribution by arc length
-            var points = curve.DivideByCount(Math.Max(1, count - 1), true, out Point3d[] pts);
+            // DivideByCount returns parameter array; points via out
+            curve.DivideByCount(Math.Max(1, count - 1), true, out Point3d[] pts);
             if (pts == null || pts.Length == 0)
-            {
-                // fallback single point
                 pts = new[] { curve.PointAtStart };
-            }
 
             for (int i = 0; i < pts.Length; i++)
             {
                 var p = baseParams.Clone();
                 p.Seed = baseParams.Seed + i * 17 + rng.Next(0, 50);
 
-                // Small height / radius variation
                 double scale = 0.85 + rng.NextDouble() * 0.3;
                 p.Height *= scale;
                 p.BaseRadius *= scale;
@@ -79,21 +65,11 @@ namespace TreeThat.Generation
                 if (mesh == null || !mesh.IsValid)
                     continue;
 
-                // Tangent frame at point
-                if (!curve.ClosestPoint(pts[i], out double t))
-                    t = curve.Domain.Min;
-
-                var tangent = curve.TangentAt(t);
-                if (tangent.IsTiny())
-                    tangent = Vector3d.XAxis;
-                tangent.Unitize();
-
-                // Rotate around Z for yaw variety; keep upright
-                double yaw = Math.Atan2(tangent.Y, tangent.X) + (rng.NextDouble() - 0.5) * 0.6;
-                var xform = Transform.Rotation(yaw, Vector3d.ZAxis, Point3d.Origin)
-                          * Transform.Translation(pts[i] - Point3d.Origin);
-
-                mesh.Transform(xform);
+                // Yaw only (keep plant upright). MUST rotate around origin first, then translate.
+                // Previous bug: Translation then Rotation-around-origin → arc scatter.
+                double yaw = (rng.NextDouble() - 0.5) * 1.2;
+                mesh.Transform(Transform.Rotation(yaw, Vector3d.ZAxis, Point3d.Origin));
+                mesh.Transform(Transform.Translation(new Vector3d(pts[i])));
 
                 var att = new ObjectAttributes
                 {
