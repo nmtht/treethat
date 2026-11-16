@@ -33,7 +33,6 @@ namespace TreeThat.Generation
             var skeleton = new PlantSkeleton();
             var rng = new Random(p.Seed);
 
-            // Root trunk
             var trunkStart = Point3d.Origin;
             var trunkEnd = new Point3d(0, 0, p.Height);
             var trunk = new BranchSegment
@@ -46,10 +45,7 @@ namespace TreeThat.Generation
             };
             skeleton.Segments.Add(trunk);
 
-            // Recursive branching
             Grow(skeleton, trunk, p, rng, 1);
-
-            // Place leaf points on terminal segments and upper levels
             PlaceLeaves(skeleton, p, rng);
 
             return skeleton;
@@ -65,7 +61,6 @@ namespace TreeThat.Generation
                 return;
             parentDir.Unitize();
 
-            // Build a frame around parent direction
             Vector3d xAxis, yAxis;
             if (Math.Abs(parentDir.Z) < 0.9)
                 xAxis = Vector3d.CrossProduct(parentDir, Vector3d.ZAxis);
@@ -80,10 +75,7 @@ namespace TreeThat.Generation
 
             for (int i = 0; i < count; i++)
             {
-                // Azimuth around parent
                 double azimuth = (2.0 * Math.PI * i / count) + (rng.NextDouble() - 0.5) * 0.4;
-
-                // Polar angle from parent axis
                 double polar = baseAngle * (0.8 + rng.NextDouble() * 0.4);
 
                 var dir = parentDir * Math.Cos(polar)
@@ -94,7 +86,6 @@ namespace TreeThat.Generation
                 double startR = parent.EndRadius;
                 double endR = startR * p.RadiusRatio;
 
-                // Start a bit up the parent segment so branches don't all spawn at the tip
                 double t = 0.55 + rng.NextDouble() * 0.4;
                 var start = parent.Start + parent.Direction * t;
                 var end = start + dir * len;
@@ -115,37 +106,53 @@ namespace TreeThat.Generation
 
         static void PlaceLeaves(PlantSkeleton skeleton, PlantParams p, Random rng)
         {
-            // Prefer higher-level segments for foliage
+            // Leaves on all levels above trunk; denser on higher levels
             foreach (var seg in skeleton.Segments)
             {
-                if (seg.Level < Math.Max(0, p.BranchLevels - 1))
-                    continue;
+                if (seg.Level < 1 && p.BranchLevels > 0)
+                    continue; // skip pure trunk unless no branches
 
-                int leavesOnSeg = (int)(3 + p.FoliageDensity * 6 * (1.0 + seg.Level * 0.3));
-                leavesOnSeg = Math.Max(1, leavesOnSeg);
+                // Level weight: higher branches get more leaves
+                double levelWeight = 0.4 + seg.Level * 0.45;
+                if (seg.Level >= p.BranchLevels)
+                    levelWeight *= 1.4;
+
+                // Base count bumped (~2x previous)
+                int leavesOnSeg = (int)Math.Round(
+                    (6 + p.FoliageDensity * 14) * levelWeight);
+
+                leavesOnSeg = Math.Max(2, leavesOnSeg);
 
                 for (int i = 0; i < leavesOnSeg; i++)
                 {
-                    double t = 0.3 + rng.NextDouble() * 0.7;
+                    double t = 0.15 + rng.NextDouble() * 0.85;
                     var pt = seg.Start + seg.Direction * t;
 
-                    // Slight offset outward
                     var dir = seg.Direction;
+                    if (dir.IsTiny())
+                        continue;
                     dir.Unitize();
+
                     Vector3d side;
                     if (Math.Abs(dir.Z) < 0.9)
                         side = Vector3d.CrossProduct(dir, Vector3d.ZAxis);
                     else
                         side = Vector3d.CrossProduct(dir, Vector3d.XAxis);
                     side.Unitize();
-                    side = side * Math.Cos(rng.NextDouble() * Math.PI * 2)
-                         + Vector3d.CrossProduct(dir, side) * Math.Sin(rng.NextDouble() * Math.PI * 2);
-                    side.Unitize();
 
-                    pt += side * (seg.EndRadius + p.LeafSize * 0.3);
+                    double spin = rng.NextDouble() * Math.PI * 2;
+                    var outward = side * Math.Cos(spin)
+                                + Vector3d.CrossProduct(dir, side) * Math.Sin(spin);
+                    outward.Unitize();
+
+                    // Slight upward bias for fuller crown
+                    outward = outward + Vector3d.ZAxis * 0.25;
+                    outward.Unitize();
+
+                    pt += outward * (seg.EndRadius + p.LeafSize * (0.25 + rng.NextDouble() * 0.35));
 
                     skeleton.LeafPoints.Add(pt);
-                    skeleton.LeafNormals.Add(side);
+                    skeleton.LeafNormals.Add(outward);
                 }
             }
         }
