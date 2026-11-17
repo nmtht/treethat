@@ -6,8 +6,7 @@ using Rhino.Geometry;
 namespace TreeThat.Generation
 {
     /// <summary>
-    /// 2D plan (top view) entourage: trunk mark + canopy outline + hatch boundary.
-    /// Projection: XY plane.
+    /// Architectural plan (top) entourage — lobed canopy, trunk, inner line, branch fan.
     /// </summary>
     public static class Entourage2D
     {
@@ -19,189 +18,154 @@ namespace TreeThat.Generation
         {
             lines = new List<Curve>();
             colorBoundaries = new List<Curve>();
+            if (skeleton == null) return;
 
-            if (skeleton == null)
-                return;
+            var rng = new Random(p.Seed + 19);
 
-            // --- Trunk mark at origin (plan) ---
-            double trunkR = Math.Max(p.BaseRadius * 0.9, 0.03);
-            var trunkCircle = new Circle(Plane.WorldXY, Point3d.Origin, trunkR);
-            lines.Add(new ArcCurve(trunkCircle));
+            // Base radius from projected branch tips
+            double canopyR = EstimateCanopyRadius(skeleton, p);
+            double trunkR = Math.Max(p.BaseRadius * 0.85, canopyR * 0.04);
+            trunkR = Math.Min(trunkR, canopyR * 0.12);
 
-            // Small cross inside trunk for readability at small scale
-            double c = trunkR * 0.55;
-            lines.Add(new LineCurve(new Point3d(-c, 0, 0), new Point3d(c, 0, 0)));
-            lines.Add(new LineCurve(new Point3d(0, -c, 0), new Point3d(0, c, 0)));
+            // ----- Trunk -----
+            lines.Add(new ArcCurve(new Circle(Plane.WorldXY, Point3d.Origin, trunkR)));
+            double cross = trunkR * 0.5;
+            lines.Add(new LineCurve(new Point3d(-cross, 0, 0), new Point3d(cross, 0, 0)));
+            lines.Add(new LineCurve(new Point3d(0, -cross, 0), new Point3d(0, cross, 0)));
 
-            // --- Canopy points from branches + leaves (XY) ---
-            var canopyPts = new List<Point3d>();
-
-            foreach (var seg in skeleton.Segments)
+            // ----- Lobed outer canopy (main graphic) -----
+            int lobes = p.ConiferStyle ? 7 : 5 + rng.Next(0, 3);
+            var outer = BuildLobedCanopy(canopyR, lobes, p.ConiferStyle, rng, irregularity: 0.18);
+            if (outer != null)
             {
-                if (seg.Level < 1)
-                    continue;
-
-                int n = 3;
-                for (int i = 0; i <= n; i++)
-                {
-                    double t = (double)i / n;
-                    var pt = seg.Start + seg.Direction * t;
-                    canopyPts.Add(ProjectXY(pt));
-                    // slight radial push by local radius
-                    var flat = ProjectXY(pt);
-                    var radial = new Vector3d(flat.X, flat.Y, 0);
-                    if (!radial.IsTiny())
-                    {
-                        radial.Unitize();
-                        canopyPts.Add(flat + radial * (seg.EndRadius + p.LeafSize * 0.25));
-                    }
-                }
+                lines.Add(outer.DuplicateCurve());
+                colorBoundaries.Add(outer);
             }
 
-            foreach (var lp in skeleton.LeafPoints)
-                canopyPts.Add(ProjectXY(lp));
+            // ----- Inner canopy line (depth) -----
+            var inner = BuildLobedCanopy(canopyR * 0.62, lobes, p.ConiferStyle, new Random(p.Seed + 91), irregularity: 0.12);
+            if (inner != null)
+                lines.Add(inner);
 
-            // Fallback radius from plant height if few points
-            if (canopyPts.Count < 3)
-            {
-                double r = Math.Max(p.Height * 0.25, p.BaseRadius * 4);
-                var fallback = new Circle(Plane.WorldXY, Point3d.Origin, r);
-                var circ = new ArcCurve(fallback);
-                lines.Add(circ);
-                colorBoundaries.Add(circ.DuplicateCurve());
-                return;
-            }
+            // ----- Outer thin echo (optional double-stroke feel) -----
+            var echo = BuildLobedCanopy(canopyR * 1.06, lobes, p.ConiferStyle, new Random(p.Seed + 3), irregularity: 0.1);
+            if (echo != null)
+                lines.Add(echo);
 
-            // Convex hull in XY
-            var hull = ConvexHullXY(canopyPts);
-            if (hull == null || hull.Count < 3)
-            {
-                double avgR = canopyPts.Average(pt => Math.Sqrt(pt.X * pt.X + pt.Y * pt.Y));
-                avgR = Math.Max(avgR, p.BaseRadius * 3);
-                var circ = new ArcCurve(new Circle(Plane.WorldXY, Point3d.Origin, avgR));
-                lines.Add(circ);
-                colorBoundaries.Add(circ.DuplicateCurve());
-                return;
-            }
-
-            // Organic closed canopy contour
-            var canopy = SmoothClosedPolyline(hull, 2);
-            if (canopy != null && canopy.IsClosed)
-            {
-                lines.Add(canopy.DuplicateCurve());
-                colorBoundaries.Add(canopy);
-            }
-
-            // Optional: a few radial accent lines from trunk to canopy (plan style)
-            var rng = new Random(p.Seed + 77);
-            int spokes = 4;
+            // ----- Branch fan in plan (structure inside canopy) -----
+            int spokes = p.ConiferStyle ? 8 : 6;
             for (int i = 0; i < spokes; i++)
             {
-                double a = 2.0 * Math.PI * i / spokes + rng.NextDouble() * 0.4;
+                double a = 2.0 * Math.PI * i / spokes + (rng.NextDouble() - 0.5) * 0.25;
                 var dir = new Vector3d(Math.Cos(a), Math.Sin(a), 0);
-                // find hull radius roughly in that direction
-                double maxDot = 0;
-                Point3d far = Point3d.Origin;
-                foreach (var hp in hull)
+                double len = canopyR * (0.55 + rng.NextDouble() * 0.28);
+                var start = Point3d.Origin + dir * (trunkR * 1.15);
+                var end = Point3d.Origin + dir * len;
+
+                // Main spoke
+                lines.Add(new LineCurve(start, end));
+
+                // Small side twigs near tip
+                if (!p.ConiferStyle && rng.NextDouble() > 0.35)
                 {
-                    var v = new Vector3d(hp);
-                    double d = v * dir;
-                    if (d > maxDot)
-                    {
-                        maxDot = d;
-                        far = hp;
-                    }
-                }
-                if (maxDot > trunkR * 2)
-                {
-                    var start = Point3d.Origin + dir * (trunkR * 1.2);
-                    var end = far * 0.85; // not quite to edge
-                    end.Z = 0;
-                    if (start.DistanceTo(end) > trunkR)
-                        lines.Add(new LineCurve(start, end));
+                    var side = new Vector3d(-dir.Y, dir.X, 0);
+                    double tw = canopyR * 0.12 * (0.7 + rng.NextDouble() * 0.5);
+                    var mid = start + (end - start) * (0.55 + rng.NextDouble() * 0.25);
+                    lines.Add(new LineCurve(mid, mid + side * tw));
+                    if (rng.NextDouble() > 0.5)
+                        lines.Add(new LineCurve(mid, mid - side * tw * 0.7));
                 }
             }
-        }
 
-        static Point3d ProjectXY(Point3d p) => new Point3d(p.X, p.Y, 0);
-
-        static List<Point3d>? ConvexHullXY(List<Point3d> points)
-        {
-            var pts = points
-                .Select(p => new Point3d(p.X, p.Y, 0))
-                .Distinct(new PointXYComparer())
-                .OrderBy(p => p.X)
-                .ThenBy(p => p.Y)
-                .ToList();
-
-            if (pts.Count < 3)
-                return null;
-
-            var lower = new List<Point3d>();
-            foreach (var p in pts)
+            // ----- Conifer: star-like secondary outline -----
+            if (p.ConiferStyle)
             {
-                while (lower.Count >= 2 && Cross(lower[lower.Count - 2], lower[lower.Count - 1], p) <= 0)
-                    lower.RemoveAt(lower.Count - 1);
-                lower.Add(p);
+                int tips = 6 + rng.Next(0, 3);
+                var starPts = new List<Point3d>();
+                for (int i = 0; i < tips * 2; i++)
+                {
+                    double a = Math.PI * i / tips;
+                    double r = (i % 2 == 0) ? canopyR * 0.95 : canopyR * 0.55;
+                    r *= 0.92 + rng.NextDouble() * 0.12;
+                    starPts.Add(new Point3d(Math.Cos(a) * r, Math.Sin(a) * r, 0));
+                }
+                starPts.Add(starPts[0]);
+                lines.Add(new PolylineCurve(starPts));
             }
+        }
 
-            var upper = new List<Point3d>();
-            for (int i = pts.Count - 1; i >= 0; i--)
+        static double EstimateCanopyRadius(PlantSkeleton skeleton, PlantParams p)
+        {
+            double maxR = 0;
+            foreach (var seg in skeleton.Segments)
             {
-                var p = pts[i];
-                while (upper.Count >= 2 && Cross(upper[upper.Count - 2], upper[upper.Count - 1], p) <= 0)
-                    upper.RemoveAt(upper.Count - 1);
-                upper.Add(p);
+                if (seg.Level < 1) continue;
+                maxR = Math.Max(maxR, HorizontalRadius(seg.Start));
+                maxR = Math.Max(maxR, HorizontalRadius(seg.End));
             }
+            foreach (var lp in skeleton.LeafPoints)
+                maxR = Math.Max(maxR, HorizontalRadius(lp));
 
-            lower.RemoveAt(lower.Count - 1);
-            upper.RemoveAt(upper.Count - 1);
-            lower.AddRange(upper);
-            return lower.Count >= 3 ? lower : null;
+            if (maxR < 1e-6)
+                maxR = Math.Max(p.Height * 0.28, p.BaseRadius * 5);
+
+            // Pad so outline sits outside geometry a bit
+            return maxR * 1.08 + p.LeafSize * 0.5;
         }
 
-        static double Cross(Point3d o, Point3d a, Point3d b)
+        static double HorizontalRadius(Point3d pt)
         {
-            return (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X);
+            return Math.Sqrt(pt.X * pt.X + pt.Y * pt.Y);
         }
 
-        static PolylineCurve? SmoothClosedPolyline(List<Point3d> hull, int subdivisions)
+        /// <summary>
+        /// Closed organic / lobed plan canopy.
+        /// </summary>
+        static Curve? BuildLobedCanopy(double radius, int lobes, bool conifer, Random rng, double irregularity)
         {
-            if (hull.Count < 3) return null;
+            if (radius < 1e-6) return null;
 
-            var polyPts = new List<Point3d>(hull);
-            if (polyPts[0].DistanceTo(polyPts[polyPts.Count - 1]) > 1e-9)
-                polyPts.Add(polyPts[0]);
+            int samples = Math.Max(36, lobes * 12);
+            var pts = new List<Point3d>();
 
-            var curve = new Polyline(polyPts).ToPolylineCurve();
-            if (curve == null) return null;
+            for (int i = 0; i < samples; i++)
+            {
+                double t = (double)i / samples;
+                double angle = t * Math.PI * 2;
 
-            var nurb = curve.ToNurbsCurve();
+                // Lobe modulation
+                double lobe = 0.5 + 0.5 * Math.Cos(angle * lobes);
+                if (conifer)
+                    lobe = 0.55 + 0.45 * Math.Pow(Math.Abs(Math.Cos(angle * lobes * 0.5)), 0.7);
+
+                double jitter = 1.0 + (rng.NextDouble() - 0.5) * 2.0 * irregularity;
+                double r = radius * (0.78 + 0.22 * lobe) * jitter;
+
+                // Mild secondary wave for softness
+                r *= 1.0 + 0.04 * Math.Sin(angle * (lobes * 2 + 1));
+
+                pts.Add(new Point3d(Math.Cos(angle) * r, Math.Sin(angle) * r, 0));
+            }
+            pts.Add(pts[0]);
+
+            var poly = new PolylineCurve(pts);
+            var nurb = poly.ToNurbsCurve();
             if (nurb != null)
             {
                 nurb.MakeClosed(1e-6);
-                int samples = Math.Max(28, hull.Count * (1 + subdivisions));
-                var sampled = new List<Point3d>();
-                for (int i = 0; i < samples; i++)
+                // Resample smooth
+                int outN = samples;
+                var smooth = new List<Point3d>();
+                for (int i = 0; i < outN; i++)
                 {
-                    double t = nurb.Domain.ParameterAt((double)i / samples);
-                    var pt = nurb.PointAt(t);
-                    sampled.Add(new Point3d(pt.X, pt.Y, 0));
+                    double u = nurb.Domain.ParameterAt((double)i / outN);
+                    var pt = nurb.PointAt(u);
+                    smooth.Add(new Point3d(pt.X, pt.Y, 0));
                 }
-                sampled.Add(sampled[0]);
-                return new PolylineCurve(sampled);
+                smooth.Add(smooth[0]);
+                return new PolylineCurve(smooth);
             }
-
-            return curve;
-        }
-
-        class PointXYComparer : IEqualityComparer<Point3d>
-        {
-            public bool Equals(Point3d a, Point3d b) =>
-                Math.Abs(a.X - b.X) < 1e-6 && Math.Abs(a.Y - b.Y) < 1e-6;
-
-            public int GetHashCode(Point3d p) =>
-                HashCode.Combine(Math.Round(p.X, 5), Math.Round(p.Y, 5));
+            return poly;
         }
     }
 }
